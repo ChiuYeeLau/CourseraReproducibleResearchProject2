@@ -1,0 +1,136 @@
+---
+title: "Impact of Severe Weather Events on Health and Economy"
+author: "Xiaoyi (Leo) Liu"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(cache = TRUE)
+library(R.utils)
+library(ggplot2)
+library(gridExtra)
+options(scipen = 1)
+options(rpubs.upload.method = "internal")
+options(RCurlOptions = list(verbose = FALSE, capath = system.file("CurlSSL", "cacert.pem", package = "RCurl"), ssl.verifypeer = FALSE))
+```
+
+### Synopsis ###
+
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+
+In this project, we will explore the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+### Data Processing ###
+
+First, we download the dataset, upzip it and read the csv file.
+
+
+
+```{r, results = 'hide'}
+setwd("~/Desktop/CourseraReproducibleResearchProject2")
+
+if (!"stormData.csv.bz2" %in% dir()) 
+        {
+        download.file("http://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", destfile = "stormData.csv.bz2")
+}
+bunzip2("stormData.csv.bz2", overwrite = T, remove = F)
+```
+
+```{r}
+StormData = read.csv('stormData.csv', sep = ",")
+head(StormData)
+dim(StormData)
+```
+There are 902297 rows and 37 columns in the dataset, and the events start from 1950 until Nov. 2011. We first add a new column **'Year'** which records the year in the end date numerically. Then, we plot a histogram of the years when those events started to happen.
+
+```{r, fig.height = 4, fig.width = 5}
+StormData$YEAR <- as.numeric(format(as.Date(StormData$BGN_DATE, format = "%m/%d/%Y %H:%M:%S"), "%Y"))
+
+HistYear = ggplot(aes(x = YEAR), data = StormData) + geom_histogram(binwidth = 2) + xlab('Year') + ylab('Count') + ggtitle('Histogram of Years') + geom_vline(xintercept = 1996, colour = 'blue') + annotate("text", x = 1996, y = 90000, label = "1996", colour = "blue")
+HistYear
+```
+
+It can be seen that at early dates before 1996, the number of events is usually smaller than 60000 for each year, while the dates after 1996 have plenty of event records. For the purpose of a more consistent balance of event types across recent years, we decide to use the subset of the data from 1996 to 2011.
+
+```{r}
+StormData = subset(StormData, YEAR >= 1996)
+dim(StormData)
+```
+
+Now, the refined dataset has 653530 rows now. The proceeding analysis will be based on the events after 1996.
+
+### Impact on Public Health ###
+
+To find out which event causes the most harmful damages on the public health, we will compute the number of fatalities and injuries caused by the severe weather events and find out the top 5 ones.
+
+```{r}
+SevereEventsForFatalities = aggregate(StormData$FATALITIES, by = list(StormData$EVTYPE), FUN = 'sum')
+SevereEventsForInjuries = aggregate(StormData$INJURIES, by = list(StormData$EVTYPE), FUN = 'sum')
+Top5SevereEventsForFatalities = SevereEventsForFatalities[order(-SevereEventsForFatalities$x), ][1 : 5, ]
+Top5SevereEventsForInjuries = SevereEventsForInjuries[order(-SevereEventsForInjuries$x), ][1 : 5, ]
+names(Top5SevereEventsForFatalities) = c("EVTYPE_FOR_FATALITIES", "COUNT")
+names(Top5SevereEventsForInjuries) = c("EVTYPE_FOR_INJURIES", "COUNT")
+Top5SevereEventsForFatalities
+Top5SevereEventsForInjuries
+```
+
+Now, we plot the total fatalities and total injuries affected by top 5 severe weather events.
+
+```{r, fig.height = 6, fig.width = 5}
+FatalPlot = ggplot(aes(x = EVTYPE_FOR_FATALITIES, y = COUNT), data = Top5SevereEventsForFatalities) + geom_bar(stat = "identity") + xlab("EVTYPE_FOR_FATALITIES") + ylab("COUNT") + ggtitle("Top 5 Severe Events that Causes Fatalities") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+InjurPlot = ggplot(aes(x = EVTYPE_FOR_INJURIES, y = COUNT), data = Top5SevereEventsForInjuries) + geom_bar(stat = "identity") + xlab("EVTYPE_FOR_INJURIES") + ylab("COUNT") + ggtitle("Top 5 Severe Events that Causes Injuries") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+grid.arrange(FatalPlot, InjurPlot, nrow = 2)
+```
+
+From above, we can see that:
+
+- Excessive heat and tornado cause most fatalities; 
+
+- Tornado and flood cause most injuries.
+
+### Impact on Economy ###
+
+Similar to the data analysis above, we will compute the number of property damage and crop damage caused by the severe weather events and find out the top 5 severe ones.
+
+```{r}
+StormData$PROPDMGEXP = as.character(StormData$PROPDMGEXP)
+StormData$PROPDMGEXP[toupper(StormData$PROPDMGEXP) == 'B'] = "9"
+StormData$PROPDMGEXP[toupper(StormData$PROPDMGEXP) == 'M'] = "6"
+StormData$PROPDMGEXP[toupper(StormData$PROPDMGEXP) == 'K'] = "3"
+StormData$PROPDMGEXP[toupper(StormData$PROPDMGEXP) == 'H'] = "2"
+StormData$PROPDMGEXP = as.numeric(StormData$PROPDMGEXP)
+StormData$PROPDMGEXP[is.na(StormData$PROPDMGEXP)] = 0
+StormData$PROPDMG = StormData$PROPDMG * 10^StormData$PROPDMGEXP
+
+StormData$CROPDMGEXP = as.character(StormData$CROPDMGEXP)
+StormData$CROPDMGEXP[toupper(StormData$CROPDMGEXP) == 'B'] = "9"
+StormData$CROPDMGEXP[toupper(StormData$CROPDMGEXP) == 'M'] = "6"
+StormData$CROPDMGEXP[toupper(StormData$CROPDMGEXP) == 'K'] = "3"
+StormData$CROPDMGEXP[toupper(StormData$CROPDMGEXP) == 'H'] = "2"
+StormData$CROPDMGEXP = as.numeric(StormData$CROPDMGEXP)
+StormData$CROPDMGEXP[is.na(StormData$CROPDMGEXP)] = 0
+StormData$CROPDMG = StormData$CROPDMG * 10^StormData$CROPDMGEXP
+
+SevereEventsForProp = aggregate(StormData$PROPDMG, by = list(StormData$EVTYPE), FUN = 'sum')
+SevereEventsForCrop = aggregate(StormData$CROPDMG, by = list(StormData$EVTYPE), FUN = 'sum')
+Top5SevereEventsForProp = SevereEventsForProp[order(-SevereEventsForProp$x), ][1 : 5, ]
+Top5SevereEventsForCrop = SevereEventsForCrop[order(-SevereEventsForCrop$x), ][1 : 5, ]
+names(Top5SevereEventsForProp) = c("EVTYPE_FOR_PROP", "COUNT")
+names(Top5SevereEventsForCrop) = c("EVTYPE_FOR_CROP", "COUNT")
+Top5SevereEventsForProp
+Top5SevereEventsForCrop
+```
+
+We also plot the total property and crop damages caused by top 5 severe weather events.
+
+```{r, fig.height = 8, fig.width = 5}
+PropPlot = ggplot(aes(x = EVTYPE_FOR_PROP, y = COUNT), data = Top5SevereEventsForProp) + geom_bar(stat = "identity") + xlab("EVTYPE_FOR_PROP") + ylab("COUNT") + ggtitle("Top 5 Severe Events that Causes Property Damages") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+CropPlot = ggplot(aes(x = EVTYPE_FOR_CROP, y = COUNT), data = Top5SevereEventsForCrop) + geom_bar(stat = "identity") + xlab("EVTYPE_FOR_CROP") + ylab("COUNT") + ggtitle("Top 5 Severe Events that Causes Crop Damages") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+grid.arrange(PropPlot, CropPlot, nrow = 2)
+```
+
+From above, we can see that:
+
+- Flood and hurricane/typhoon cause most property damages; 
+
+- Drought and flood cause most crop damages.
